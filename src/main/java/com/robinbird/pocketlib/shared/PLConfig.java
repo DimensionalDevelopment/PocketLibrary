@@ -35,7 +35,7 @@ public class PLConfig {
     public static void loadConfig(FMLPreInitializationEvent event) {
 
         // Load config
-        configurationFolder = new File(event.getModConfigurationDirectory(), "/DimDoors");
+        configurationFolder = new File(event.getModConfigurationDirectory(), "/PocketLib");
         if (!configurationFolder.exists()) {
             configurationFolder.mkdirs();
         }

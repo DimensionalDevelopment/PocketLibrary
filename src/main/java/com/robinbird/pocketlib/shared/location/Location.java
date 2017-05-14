@@ -16,8 +16,8 @@ import net.minecraft.world.World;
  */
 public class Location implements Serializable {
 
-    private int dimensionID;
-    private BlockPos pos;
+    protected int dimensionID;
+    protected BlockPos pos;
 
     public Location(World world, int x, int y, int z) {
         this(world, new BlockPos(x, y, z));

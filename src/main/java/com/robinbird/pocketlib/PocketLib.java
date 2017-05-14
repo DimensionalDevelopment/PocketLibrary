@@ -2,6 +2,8 @@ package com.robinbird.pocketlib;
 
 import com.robinbird.pocketlib.shared.PLCommonProxy;
 import com.robinbird.pocketlib.shared.PLConfig;
+import com.robinbird.pocketlib.shared.command.*;
+import java.util.List;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.translation.I18n;
@@ -10,8 +12,6 @@ import net.minecraftforge.fml.common.FMLLog;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.SidedProxy;
 import net.minecraftforge.fml.common.event.*;
-
-import java.util.List;
 
 @Mod(modid = PocketLib.MODID, name = "Pocket Library", version = PocketLib.VERSION, dependencies = "required-after:Forge@[12.18.3.2281)")
 public class PocketLib {
@@ -45,7 +45,7 @@ public class PocketLib {
 
     private void registerCommands(FMLServerStartingEvent event) {
         event.registerServerCommand(new TeleportCommand());
-        event.registerServerCommand(new PocketCommand());
+        event.registerServerCommand(new SchematicCommand());
     }
 
     public static boolean isClient() {
