@@ -19,6 +19,7 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
 import net.minecraft.util.ResourceLocation;
+import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
 
 /**
@@ -27,23 +28,11 @@ import net.minecraftforge.fml.common.registry.ForgeRegistries;
  */
 public class Schematic {
 
-    private static final String[] OLDDIMDOORBLOCKNAMES = new String[]{
-        "Dimensional Door",
-        "Fabric of Reality",
-        "transientDoor", //only used in the two old Overworld gateway (worldgen) structures
-        "Warp Door"};
-
-    private static final String[] NEWDIMDOORBLOCKNAMES = new String[]{
-        "blockDimDoor",
-        "blockFabric", //[type=fabric] is the default blockstate
-        "blockDimDoorTransient",
-        "blockDimDoorWarp"};
-
     int version = Integer.parseInt("1"); //@todo set in build.gradle ${spongeSchematicVersion}
-    String author = "DimDoors"; //@todo set in build.gradle ${modID}
+    String author = PocketLib.MODID;
     String schematicName = "Unknown";
     long creationDate;
-    String[] requiredMods = new String[0];
+    String[] requiredMods = new String[]{PocketLib.MODID};
     short width;
     short height;
     short length;
@@ -52,18 +41,25 @@ public class Schematic {
     List<IBlockState> pallette = new ArrayList();
     int[][][] blockData; //[x][y][z]
     List<NBTTagCompound> tileEntities = new ArrayList();
+    List<NBTTagCompound> entities = new ArrayList();
 
     private Schematic() {
     }
 
     public static Schematic loadFromNBT(NBTTagCompound nbt, String parName) {
+        //loading version
         if (!nbt.hasKey("Version")) {
-            return loadOldDimDoorSchematicFromNBT(nbt, parName);
+            PocketLib.warn(Schematic.class, "Schematic nbt lacks the attribute 'Version' and therefore isn't getting loaded.");
+            return null;
         }
-
+        int version = nbt.getInteger("Version"); //Version is required
         Schematic schematic = new Schematic();
-        schematic.version = nbt.getInteger("Version"); //Version is required
+        if (version > schematic.version) {
+            PocketLib.warn(Schematic.class, "Schematic 'Version' seems to be newer than this mod's load function.");
+        }
+        schematic.version = version;
 
+        //loading metadata
         schematic.creationDate = System.currentTimeMillis();
         if (nbt.hasKey("Metadata")) { //Metadata is not required
             NBTTagCompound metadataCompound = nbt.getCompoundTag("Metadata").getCompoundTag(".");
@@ -71,7 +67,7 @@ public class Schematic {
                 schematic.author = metadataCompound.getString("Author");
             }
             //Name is not required (may be null)
-            schematic.schematicName = (parName == null || parName.equals("")) && nbt.hasKey("Name") ? metadataCompound.getString("Name") : parName;
+            schematic.schematicName = (parName == null || parName.equals("")) && metadataCompound.hasKey("Name") ? metadataCompound.getString("Name") : parName;
 
             if (nbt.hasKey("Date")) { //Date is not required
                 schematic.creationDate = metadataCompound.getLong("Date");
@@ -80,12 +76,16 @@ public class Schematic {
                 NBTTagList requiredModsTagList = ((NBTTagList) metadataCompound.getTag("RequiredMods"));
                 schematic.requiredMods = new String[requiredModsTagList.tagCount()];
                 for (int i = 0; i < requiredModsTagList.tagCount(); i++) {
-                    schematic.requiredMods[i] = requiredModsTagList.getStringTagAt(i);
+                    String modString = requiredModsTagList.getStringTagAt(i);
+                    schematic.requiredMods[i] = modString;
+                    if (!Loader.isModLoaded(modString)) {
+                        PocketLib.warn(Schematic.class, "The mod " + modString + " is required to load this Schematic, yet it does not seem to be installed. This may cause problems during placement.");
+                    }
                 }
             }
         }
-
-        //@todo, check if the required mods are loaded, otherwise abort
+        
+        //loading spacial parameters
         schematic.width = nbt.getShort("Width"); //Width is required
         schematic.height = nbt.getShort("Height"); //Height is required
         schematic.length = nbt.getShort("Length"); //Length is required
@@ -93,6 +93,7 @@ public class Schematic {
             schematic.offset = nbt.getIntArray("Offset");
         }
 
+        //loading palette
         NBTTagCompound paletteNBT = nbt.getCompoundTag("Palette"); //Palette is not required, however since we assume that the schematic contains at least some blocks, we can also assume that thee has to be a Palette
         Map<Integer, String> paletteMap = new HashMap();
         for (String key : paletteNBT.getKeySet()) {
@@ -306,166 +307,4 @@ public class Schematic {
     public List<NBTTagCompound> getTileEntities() {
         return tileEntities;
     }
-
-    public static Schematic loadOldDimDoorSchematicFromNBT(NBTTagCompound nbt, String parName) { //@todo, maybe make this a separate class, so values can be final so they HAVE TO  be set in a newly designed constructor?
-        Schematic schematic = new Schematic();
-
-        //schematic.version = 1; //already the default value
-        //schematic.author = "DimDoors"; //already the default value
-        schematic.schematicName = parName.equals("") ? "Auto-converted-DimDoors-for-MC-1.7.10-schematic" : parName;
-        schematic.creationDate = System.currentTimeMillis();
-        schematic.requiredMods = new String[]{PocketLib.MODID};
-
-        schematic.width = nbt.getShort("Width");
-        schematic.height = nbt.getShort("Height");
-        schematic.length = nbt.getShort("Length");
-        //schematic.offset = new int[]{0, 0, 0}; //already the default value
-
-        NBTTagList paletteNBT = (NBTTagList) nbt.getTag("Palette");
-        for (int i = 0; i < paletteNBT.tagCount(); i++) {
-            //DimDoors.log(Schematic.class, "reading pallete from schematic... i = " + i);
-            String blockString = paletteNBT.getStringTagAt(i);
-            boolean isAncientFabric = false;
-            if (blockString.startsWith("dimdoors")) {
-                String dimdoorsBlockName = blockString.split(":")[1];
-                if (dimdoorsBlockName.equals("Fabric of RealityPerm")) { //only special case, because this is now another state of another block
-                    isAncientFabric = true;
-                } else {
-                    dimdoorsBlockName = convertOldDimDoorsBlockNameToNewDimDoorsBlockName(dimdoorsBlockName);
-                    blockString = "dimdoors:" + dimdoorsBlockName;
-                }
-            }
-            IBlockState blockstate;
-            if (!isAncientFabric) {
-                Block block = ForgeRegistries.BLOCKS.getValue(new ResourceLocation(blockString));
-                blockstate = block.getDefaultState();
-            } else {
-                Block block = ForgeRegistries.BLOCKS.getValue(new ResourceLocation("dimdoors:blockFabric"));
-                blockstate = getBlockStateWithProperties(block, new String[]{"type=ancient"});
-            }
-            schematic.pallette.add(blockstate);
-        }
-
-        byte[] blockIntArray = nbt.getByteArray("Blocks");
-        byte[] dataIntArray = nbt.getByteArray("Data");
-        schematic.blockData = new int[schematic.width][schematic.height][schematic.length];
-        for (int x = 0; x < schematic.width; x++) {
-            for (int y = 0; y < schematic.height; y++) {
-                for (int z = 0; z < schematic.length; z++) {
-                    int blockInt = blockIntArray[x + z * schematic.width + y * schematic.width * schematic.length]; //according to the documentation on https://github.com/SpongePowered/Schematic-Specification/blob/master/versions/schematic-1.md
-                    int metadata = dataIntArray[x + z * schematic.width + y * schematic.width * schematic.length]; //according to the documentation on https://github.com/SpongePowered/Schematic-Specification/blob/master/versions/schematic-1.md
-
-                    IBlockState baseState = schematic.pallette.get(blockInt); //this is the default blockstate except for ancient fabric
-                    if (baseState == baseState.getBlock().getDefaultState()) { //should only be false if {@code baseState} is ancient fabric
-                        IBlockState additionalState = baseState.getBlock().getStateFromMeta(metadata);
-                        if (schematic.pallette.contains(additionalState)) { //check whether or not this blockstate is already in the list
-                            blockInt = schematic.pallette.indexOf(additionalState);
-                        } else {
-                            schematic.pallette.add(additionalState);
-                            blockInt = schematic.pallette.size() - 1;
-                        }
-                    } else { //if this is ancient fabric
-                        //DimDoors.log(Schematic.class, "Non-default blockstate in palette detected. Original blockInt = " + blockInt + " and baseState is " + baseState.toString()); //@todo should only print a line on load of ancient fabric
-                        blockInt = schematic.pallette.indexOf(baseState);
-                    }
-                    schematic.blockData[x][y][z] = blockInt;
-                }
-            }
-        }
-        schematic.paletteMax = schematic.pallette.size() - 1;
-
-        NBTTagList tileEntitiesTagList = (NBTTagList) nbt.getTag("TileEntities");
-        for (int i = 0; i < tileEntitiesTagList.tagCount(); i++) {
-            NBTTagCompound tileEntityTagCompound = tileEntitiesTagList.getCompoundTagAt(i);
-            schematic.tileEntities.add(tileEntityTagCompound);
-        }
-
-        return schematic;
-    }
-
-    private static String convertOldDimDoorsBlockNameToNewDimDoorsBlockName(String dimdoorsBlockName) {
-        if (OLDDIMDOORBLOCKNAMES.length != NEWDIMDOORBLOCKNAMES.length) {
-            return null;
-        }
-
-        int i = 0;
-        for (; i < OLDDIMDOORBLOCKNAMES.length; i++) {
-            if (OLDDIMDOORBLOCKNAMES[i].equals(dimdoorsBlockName)) {
-                return NEWDIMDOORBLOCKNAMES[i];
-            } else {
-                if (i == OLDDIMDOORBLOCKNAMES.length - 1) {
-                    PocketLib.warn(Schematic.class, dimdoorsBlockName + " as an old dimdoors block name is unknown.");
-                }
-            }
-        }
-        return null;
-    }
-
-    /*
-    public static void TempGenerateDefaultSchematics() {
-        for (int pocketSize = 0; pocketSize < 8; pocketSize++) {
-            generateDefaultSchematic("defaultPublic", pocketSize, ModBlocks.blockFabric.getDefaultState().withProperty(BlockFabric.TYPE, BlockFabric.EnumType.REALITY), ModBlocks.blockDimDoor);
-            generateDefaultSchematic("defaultPrivate", pocketSize, ModBlocks.blockFabric.getDefaultState().withProperty(BlockFabric.TYPE, BlockFabric.EnumType.ALTERED), ModBlocks.blockDimDoorPersonal);
-        }
-    }
-
-    private static void generateDefaultSchematic(String baseName, int pocketSize, IBlockState innerWallBlockState, Block doorBlock) {
-        int maxbound = ((pocketSize + 1) * 16) - 1;
-
-        Schematic schematic = new Schematic();
-        schematic.version = 1;
-        schematic.author = "Robijnvogel"; //@todo set in build.gradle ${modID}
-        schematic.schematicName = baseName + "_" + pocketSize;
-        schematic.creationDate = System.currentTimeMillis();
-        schematic.requiredMods = new String[1];
-        schematic.requiredMods[0] = DimDoors.MODID;
-        schematic.width = (short) maxbound;
-        schematic.height = (short) maxbound;
-        schematic.length = (short) maxbound;
-        schematic.offset = new int[]{0, 0, 0};
-
-        schematic.paletteMax = 4;
-        schematic.pallette = new ArrayList();
-        schematic.pallette.add(Blocks.AIR.getDefaultState());
-        schematic.pallette.add(ModBlocks.blockFabric.getDefaultState().withProperty(BlockFabric.TYPE, BlockFabric.EnumType.ANCIENT));
-        schematic.pallette.add(innerWallBlockState);
-        schematic.pallette.add(doorBlock.getDefaultState().withProperty(BlockDoor.HALF, BlockDoor.EnumDoorHalf.LOWER)); //bottom
-        schematic.pallette.add(doorBlock.getDefaultState().withProperty(BlockDoor.HALF, BlockDoor.EnumDoorHalf.UPPER)); //top
-
-        schematic.blockData = new int[maxbound][maxbound][maxbound]; //[x][y][z]
-        for (int x = 0; x < maxbound; x++) {
-            for (int y = 0; y < maxbound; y++) {
-                for (int z = 0; z < maxbound; z++) {
-                    if (x == 0 || x == maxbound - 1
-                            || y == 0 || y == maxbound - 1
-                            || z == 0 || z == maxbound - 1) {
-                        schematic.blockData[x][y][z] = 1; //outer dim wall
-                    } else if (DDMathUtils.withinDistanceOf(new int[]{x, y, z}, 5, new int[]{0, maxbound})) {
-                        if (z == 4 && x == (maxbound - 1) / 2 && y > 4 && y < 7) {
-                            if (y == 5) {
-                                schematic.blockData[x][y][z] = 3; //door bottom
-                            } else { // y == 6
-                                schematic.blockData[x][y][z] = 4; //door top
-                            }
-                        } else {
-                            schematic.blockData[x][y][z] = 2; //inner dim wall
-                        }
-                    } else {
-                        schematic.blockData[x][y][z] = 0; //air
-                    }
-                }
-            }
-        }
-
-        schematic.tileEntities = new ArrayList();
-        TileEntity tileEntity = doorBlock.createTileEntity(DimDoors.proxy.getDefWorld(), doorBlock.getDefaultState());
-        NBTTagCompound tileNBT = tileEntity.serializeNBT();
-        tileNBT.setInteger("x", (maxbound - 1) / 2);
-        tileNBT.setInteger("y", 6);
-        tileNBT.setInteger("z", 4);
-        schematic.tileEntities.add(tileNBT);
-
-        SchematicHandler.INSTANCE.saveSchematic(schematic, schematic.schematicName);
-    }
-     */
 }
